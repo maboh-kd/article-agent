@@ -1,4 +1,0 @@
-requests
-python-dotenv
-pytrends
-openai>=1.37.0
