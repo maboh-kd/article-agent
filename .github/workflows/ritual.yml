@@ -2,24 +2,24 @@ name: nightly-ritual
 
 on:
   schedule:
-    # JST 20:00 = UTC 11:00
-    - cron: '0 11 * * *'
+    - cron: '0 11 * * *'   # JST 20:00
   workflow_dispatch: {}
 
 jobs:
   run-agent:
     runs-on: ubuntu-latest
     env:
-      PYTHONPATH: src
+      PYTHONPATH: article-agent/src   # ← サブフォルダのsrcを指定
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       AGENT_BACKUP_TOPICS: ${{ secrets.AGENT_BACKUP_TOPICS }}
-      HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
-      HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
-      AGENT_UA: ${{ secrets.AGENT_UA }}
-
     steps:
       - uses: actions/checkout@v4
+
+      - name: Show cwd and files (debug)
+        run: |
+          pwd
+          ls -la
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -27,50 +27,32 @@ jobs:
           python-version: '3.11'
 
       - name: Install deps
+        working-directory: article-agent       # ★ここ！
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
 
-      - name: Ensure dirs (avoid artifact warning)
+      - name: Ensure dirs
+        working-directory: article-agent       # ★ここ！
         run: |
           mkdir -p outputs logs
 
-      - name: Run pipeline with rich error + Slack fail notice
+      - name: Run pipeline (dummy text but Slack ON)
+        working-directory: article-agent       # ★ここ！
         run: |
           python - << 'PY'
-          import json, os, traceback, requests, sys
+          import json
           from article_agent.pipeline import run_once
-
-          def notify_slack(text: str):
-              url = os.getenv("SLACK_WEBHOOK_URL", "")
-              if url:
-                  try:
-                      requests.post(url, json={"text": text}, timeout=15).raise_for_status()
-                  except Exception as e:
-                      print("Slack notify error:", repr(e), file=sys.stderr)
-
-          try:
-              rec = run_once(use_dummy_model=True, try_webhook_first=True)
-              print(json.dumps(rec, ensure_ascii=False, indent=2))
-          except Exception as e:
-              tb = traceback.format_exc()
-              print("=== PIPELINE ERROR ===")
-              print(tb)
-              notify_slack(f":warning: 記事エージェント失敗: {e.__class__.__name__}: {e}")
-              # 失敗もログ化しておく
-              os.makedirs("logs", exist_ok=True)
-              with open("logs/last_error.txt", "w", encoding="utf-8") as f:
-                  f.write(tb)
-              # 失敗をCIに伝える
-              raise
+          rec = run_once(use_dummy_model=True, try_webhook_first=True)
+          print(json.dumps(rec, ensure_ascii=False, indent=2))
           PY
 
-      - name: Upload outputs (ignore if none)
+      - name: Upload outputs
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: article-md
-          path: outputs/*.md
+          path: article-agent/outputs/*.md
           if-no-files-found: ignore
 
       - name: Upload logs
@@ -78,5 +60,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: logs
-          path: logs/*
+          path: article-agent/logs/*
           if-no-files-found: ignore
