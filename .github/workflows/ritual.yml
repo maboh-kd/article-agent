@@ -1,0 +1,39 @@
+name: nightly-ritual
+
+on:
+  schedule:
+    # JST 20:00 = UTC 11:00
+    - cron: '0 11 * * *'
+  workflow_dispatch: {}  # 手動実行もOK
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: src
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      AGENT_BACKUP_TOPICS: ${{ secrets.AGENT_BACKUP_TOPICS }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+      - name: Run pipeline (dummy text but Slack ON)
+        run: |
+          python - << 'PY'
+          import json
+          from article_agent.pipeline import run_once
+          rec = run_once(use_dummy_model=True, try_webhook_first=True)
+          print(json.dumps(rec, ensure_ascii=False, indent=2))
+          PY
+      - name: Upload outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: article-md
+          path: outputs/*.md
