@@ -4,7 +4,7 @@ on:
   schedule:
     # JST 20:00 = UTC 11:00
     - cron: '0 11 * * *'
-  workflow_dispatch: {}  # 手動実行もOK
+  workflow_dispatch: {}
 
 jobs:
   run-agent:
@@ -14,26 +14,69 @@ jobs:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
       AGENT_BACKUP_TOPICS: ${{ secrets.AGENT_BACKUP_TOPICS }}
+      HTTP_PROXY: ${{ secrets.HTTP_PROXY }}
+      HTTPS_PROXY: ${{ secrets.HTTPS_PROXY }}
+      AGENT_UA: ${{ secrets.AGENT_UA }}
+
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+
       - name: Install deps
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
-      - name: Run pipeline (dummy text but Slack ON)
+
+      - name: Ensure dirs (avoid artifact warning)
+        run: |
+          mkdir -p outputs logs
+
+      - name: Run pipeline with rich error + Slack fail notice
         run: |
           python - << 'PY'
-          import json
+          import json, os, traceback, requests, sys
           from article_agent.pipeline import run_once
-          rec = run_once(use_dummy_model=True, try_webhook_first=True)
-          print(json.dumps(rec, ensure_ascii=False, indent=2))
+
+          def notify_slack(text: str):
+              url = os.getenv("SLACK_WEBHOOK_URL", "")
+              if url:
+                  try:
+                      requests.post(url, json={"text": text}, timeout=15).raise_for_status()
+                  except Exception as e:
+                      print("Slack notify error:", repr(e), file=sys.stderr)
+
+          try:
+              rec = run_once(use_dummy_model=True, try_webhook_first=True)
+              print(json.dumps(rec, ensure_ascii=False, indent=2))
+          except Exception as e:
+              tb = traceback.format_exc()
+              print("=== PIPELINE ERROR ===")
+              print(tb)
+              notify_slack(f":warning: 記事エージェント失敗: {e.__class__.__name__}: {e}")
+              # 失敗もログ化しておく
+              os.makedirs("logs", exist_ok=True)
+              with open("logs/last_error.txt", "w", encoding="utf-8") as f:
+                  f.write(tb)
+              # 失敗をCIに伝える
+              raise
           PY
-      - name: Upload outputs
+
+      - name: Upload outputs (ignore if none)
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: article-md
           path: outputs/*.md
+          if-no-files-found: ignore
+
+      - name: Upload logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: logs
+          path: logs/*
+          if-no-files-found: ignore
