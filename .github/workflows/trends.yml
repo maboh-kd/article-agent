@@ -1,0 +1,38 @@
+﻿name: nightly-trends
+
+on:
+  schedule:
+    - cron: "0 11 * * *"     # 20:00 JST
+  workflow_dispatch:
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Run pipeline
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          OPENAI_API_KEY:    ${{ secrets.OPENAI_API_KEY }}
+          TZ: Asia/Tokyo
+        run: |
+          python - << 'PY'
+          import sys
+          from src.pipeline import main
+          if __name__ == "__main__":
+              sys.exit(main())
+          PY
