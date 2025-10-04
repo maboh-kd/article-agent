@@ -1,4 +1,4 @@
-﻿from datetime import datetime
+from datetime import datetime
 from .google_trends import fetch_trending_queries
 from .writer import generate_article
 from .slack_notify import send_to_slack
@@ -11,5 +11,5 @@ def main() -> int:
     topic = trends[0][0] if trends else "育児 トレンド"
     article = generate_article(topic)
 
-    send_to_slack(head + f"\n\n# {topic}\n\n" + article[:1500] + ("…" if len(article)>1500 else ""))
+    send_to_slack(head + f"\n\n# {topic}\n\n" + article)
     return 0
