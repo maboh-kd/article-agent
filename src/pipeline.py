@@ -1,15 +1,17 @@
 from datetime import datetime
-from .google_trends import fetch_trending_queries
+from .google_trends import fetch_trending_queries, pick_topic_and_record
 from .writer import generate_article
 from .slack_notify import send_to_slack
 
 def main() -> int:
     ts = datetime.now().strftime("%Y-%m-%d %H:%M")
-    trends = fetch_trending_queries()
-    head = f"📰 記事生成エージェント {ts}\n候補: " + ", ".join([q for q,_ in trends])
+    candidates = fetch_trending_queries()  # [(query, score)]
+    head = "候補: " + ", ".join([f"{q}（{int(s)}）" for q, s in candidates]) if candidates else "候補: 取得失敗→フォールバック"
 
-    topic = trends[0][0] if trends else "育児 トレンド"
+    topic, score = pick_topic_and_record(candidates)
     article = generate_article(topic)
 
-    send_to_slack(head + f"\n\n# {topic}\n\n" + article)
+    body = f"📰 記事生成エージェント {ts}\n{head}\n\n# {topic}（{int(score)}）\n\n{article}"
+    # 長文のときは分割送信したいなら、ここで chunk してループ送信でもOK
+    send_to_slack(body)
     return 0
