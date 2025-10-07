@@ -1,0 +1,47 @@
+name: Fetch Trends (Japan Parenting)
+
+on:
+  schedule:
+    # GitHub Actions は UTC。20:00 JST = 11:00 UTC
+    - cron: "0 11 * * *"
+  workflow_dispatch:
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install -U pip
+          pip install -r requirements.txt
+
+      - name: Run trend fetcher
+        env:
+          # ====== ここを変えるだけで挙動変更できる ======
+          GTR_MODE: SEEDED              # SEEDED or HOT
+          GTR_GEO: JP
+          GTR_TIMEFRAME: "now 7-d"
+          GTR_TOP_N: "30"
+          GTR_OUT_DIR: assets
+          GTR_OUT_PREFIX: trends
+          # 育児系シード（カンマ区切りで上書き可）
+          GTR_SEEDS: "育児, 子育て, 赤ちゃん, 1歳, 2歳, 保育園, 夜泣き, 離乳食, イヤイヤ期, トイレトレーニング, 予防接種, 断乳"
+          # Slack Webhook はリポジトリSecretsから
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+        run: |
+          python src/trend_fetcher.py
+
+      - name: Upload TXT artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trends-txt
+          path: assets/*.txt
+          if-no-files-found: warn
